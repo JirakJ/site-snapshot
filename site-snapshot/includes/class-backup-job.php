@@ -439,7 +439,9 @@ final class Backup_Job {
 		}
 
 		if ( function_exists( 'set_time_limit' ) ) {
-			@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			// Headroom for one large file after the budget ends; never lower than what the host allows.
+			$max = (int) ini_get( 'max_execution_time' );
+			@set_time_limit( $max <= 0 ? 0 : max( 120, $max ) ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 		}
 		wp_raise_memory_limit( 'admin' );
 		$deadline = microtime( true ) + self::time_budget();
@@ -611,7 +613,7 @@ final class Backup_Job {
 					continue;
 				}
 				self::write_all( $queue, $zip . "\t" . $path . "\n" );
-			} elseif ( is_file( $path ) ) {
+			} elseif ( is_file( $path ) && ! in_array( $path, $exclude, true ) ) {
 				$this->add_to_list( $list, $zip, $path );
 			}
 		}
@@ -843,6 +845,7 @@ final class Backup_Job {
 
 	/**
 	 * Cache and other backup plugins' storage – regenerable or redundant.
+	 * The `sitesnap_excluded_dirs` filter may add directories or single files.
 	 *
 	 * @return string[]
 	 */

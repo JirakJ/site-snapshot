@@ -58,9 +58,11 @@ obnova webu ze zálohy, velké weby, řešení problémů.
   úložiště záloh nezobrazuje ani nestahuje.
 - Ručně zadané FTP/hosting údaje jsou šifrované (libsodium, klíč odvozený z `AUTH_KEY`/`AUTH_SALT`) – únik samotné
   databáze je neprozradí. Po změně salts je potřeba je zadat znovu.
-- Úložiště záloh chrání na Apache/LiteSpeed `.htaccess` (ověřeno: 403), na IIS `web.config`. Na nginx plugin
-  zobrazí pravidlo `location ^~ …` (ověřeno: 404 i při kódované adrese a i když je před ním regex blok
-  pro statické soubory).
+- Úložiště záloh chrání na Apache/LiteSpeed `.htaccess` (ověřeno: 403) a na IIS `web.config`. Plugin navíc
+  **sám otestuje**, jestli jde kontrolní soubor ze složky záloh stáhnout bez přihlášení (funguje pro jakýkoli
+  server, i nginx před Apachem). Pokud ano, zobrazí pravidlo pro nginx (`location ^~ …`, na multisite regex podle
+  názvu složky) – ověřeno na nginx 1.31 včetně kódovaných adres, regex bloků pro statické soubory
+  a přepisů multisite.
 - **Záloha obsahuje hesla** (`wp-config.php`, `SITE-INFO.txt`) – po stažení ji ze serveru smažte.
 
 Bezpečnostní problém nahlaste soukromě přes

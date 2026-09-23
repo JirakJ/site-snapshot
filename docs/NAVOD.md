@@ -79,10 +79,10 @@ funguje i na levném sdíleném hostingu.
 ### C) Přes WP-CLI
 
 ```sh
-wp plugin install https://github.com/JirakJ/site-snapshot/releases/latest/download/site-snapshot-0.2.0.zip --activate
+wp plugin install https://github.com/JirakJ/site-snapshot/releases/download/v0.2.0/site-snapshot-0.2.0.zip --activate
 ```
 
-(Číslo verze upravte podle posledního releasu.)
+(Číslo verze na obou místech upravte podle [posledního releasu](https://github.com/JirakJ/site-snapshot/releases/latest).)
 
 ### Aktualizace pluginu
 
@@ -95,19 +95,29 @@ uložené přístupy i historie zůstanou zachované.
 
 Záloha obsahuje hesla (`wp-config.php`, `SITE-INFO.txt`). Plugin ji ukládá do
 `wp-content/uploads/site-snapshot-<24 náhodných znaků>/` a stahuje se **jen přes administraci** (přihlášený
-administrátor + bezpečnostní token). Kdyby ale někdo znal přesnou adresu souboru, musí ho zastavit webový server:
+administrátor + bezpečnostní token). Kdyby ale někdo znal přesnou adresu souboru, musí ho zastavit webový server.
+Plugin do složky zapisuje ochranné soubory:
 
-| Server | Co udělat |
-| --- | --- |
-| **Apache**, **LiteSpeed** / OpenLiteSpeed | nic – plugin vytvoří `.htaccess`, přímý přístup vrátí **403** (ověřeno) |
-| **IIS** | nic – plugin vytvoří `web.config` |
-| **nginx** | **doplnit pravidlo**, nginx `.htaccess` nečte |
+| Server | Ochrana | Stav |
+| --- | --- | --- |
+| **Apache**, **LiteSpeed** / OpenLiteSpeed | `.htaccess` (`Require all denied`) | na Apache 2.4 ověřeno – 403; funguje jen s povoleným `AllowOverride` |
+| **IIS** | `web.config` (URL Authorization, `Deny *`) | neověřeno – spoléhejte na samotest níže |
+| **nginx** (i nginx před Apachem, OpenResty…) | nginx `.htaccess` nečte | **nutné doplnit pravidlo** |
+
+### Samotest ochrany
+
+Při otevření karty *Záloha* si plugin zkusí stáhnout kontrolní soubor ze složky záloh **stejně jako návštěvník
+bez přihlášení**. Nezáleží tedy na typu serveru ani na tom, jestli před webem stojí nginx nebo CDN:
+
+- **nic se nezobrazí** → ochrana funguje (výsledek se pamatuje 24 hodin),
+- **červené upozornění** → zálohy jsou z internetu dostupné; obsahuje pravidlo pro nginx vygenerované pro váš web,
+- **modrá informace** → web nedokáže volat sám sebe (blokovaný loopback), ověřte ochranu ručně (níže).
+
+Tlačítko **Otestovat znovu** test zopakuje hned (např. po úpravě konfigurace serveru).
+
+![Upozornění s pravidlem pro nginx](img/07-nginx.jpg)
 
 ### nginx
-
-Na nginx zobrazí plugin na kartě *Záloha* červené upozornění i s pravidlem vygenerovaným přesně pro váš web:
-
-![Upozornění na nginx s pravidlem](img/07-nginx.jpg)
 
 Pravidlo (pro běžný web, kde jsou nahrané soubory v `/wp-content/uploads`):
 
@@ -123,15 +133,26 @@ location ^~ /wp-content/uploads/site-snapshot- {
 2. Ověřte konfiguraci a načtěte ji: `sudo nginx -t && sudo systemctl reload nginx`.
 3. Na spravovaném hostingu (bez přístupu ke konfiguraci) pošlete pravidlo podpoře hostingu.
 
-Na **multisite** plugin vygeneruje regex variantu pro všechny podweby – ta se musí vložit **před** ostatní bloky
-`location ~` (regexy nginx vyhodnocuje v pořadí, v jakém jsou zapsané).
+Na **multisite** (podweby mají vlastní složky záloh a v podadresářové síti i více adres) plugin vygeneruje
+pravidlo podle jedinečného názvu složky:
 
-### Jak ověřit, že ochrana funguje
+```nginx
+location ~ "/site-snapshot-[a-z0-9]{16,}(/|$)" {
+    deny all;
+    return 404;
+}
+```
+
+Vložte ho **před** ostatní bloky `location ~` (regexy nginx vyhodnocuje v pořadí, v jakém jsou zapsané). Uvozovky
+jsou nutné – bez nich nginx konfiguraci odmítne kvůli `{`. Ověřeno i s přepisovacími pravidly multisite
+(`/shop/wp-content/…` → `/wp-content/…`).
+
+### Ruční ověření
 
 Přes FTP se podívejte do `wp-content/uploads/` a zjistěte přesný název složky `site-snapshot-…`. Pak:
 
 ```sh
-curl -I https://vas-web.cz/wp-content/uploads/site-snapshot-XXXXXXXXXXXXXXXXXXXXXXXX/index.html
+curl -I https://vas-web.cz/wp-content/uploads/site-snapshot-XXXXXXXXXXXXXXXXXXXXXXXX/probe.txt
 ```
 
 Správně je **403** nebo **404**. Pokud vidíte **200**, ochrana nefunguje – nenechávejte zálohy na serveru.
@@ -155,7 +176,7 @@ pohromadě:
 - Hodnoty se ukládají **šifrovaně** (libsodium, klíč odvozený z bezpečnostních klíčů ve `wp-config.php`) – únik
   samotné databáze je neprozradí.
 - Heslo k databázi je na stránce skryté, tlačítkem **Zobrazit** ho odkryjete, **Kopírovat** ho zkopíruje.
-- Každé zobrazení stránky se zapíše do historie.
+- Zobrazení stránky se zapíše do historie (nejvýš jednou za 10 minut na uživatele).
 - Pokud se změní bezpečnostní klíče (`AUTH_KEY`, `AUTH_SALT`) ve `wp-config.php`, uložené údaje už nejde
   dešifrovat – plugin na to upozorní a stačí je zadat znovu.
 
@@ -184,8 +205,9 @@ Záloha běží po krátkých krocích a ukazuje průběh:
 
 - **Nechte stránku otevřenou**, dokud záloha neskončí. Při pokusu o odchod se prohlížeč zeptá.
 - Když stránku zavřete nebo spadne připojení, záloha se **pozastaví a nic se neztratí**:
-  - do 15 minut se po otevření stránky rozběhne sama,
-  - později je v seznamu jako **Přerušeno** s tlačítkem **Pokračovat**.
+  - do 15 minut se po otevření karty *Záloha* rozběhne sama,
+  - později je v seznamu jako **Přerušeno** s tlačítkem **Pokračovat** (pokračuje od posledního uloženého místa),
+  - přerušená záloha, na kterou se 24 hodin nesáhne, se automaticky smaže.
 - **Zrušit zálohu** ji zastaví a smaže rozpracované soubory.
 - Najednou může běžet jen jedna záloha.
 
@@ -313,23 +335,24 @@ wp db import database.sql
 
 ## 11. Velké weby a limity hostingu
 
-Každý krok zálohy trvá polovinu `max_execution_time` (5–20 s), takže záloha projde i s 30sekundovým limitem.
-Pár věcí přesto pomůže:
+Každý krok zálohy pracuje polovinu `max_execution_time` (5–20 s), takže záloha projde i s 30sekundovým limitem.
+Soubor, který se v kroku začal balit, se ale musí dobalit – plugin si proto na krok vyžádá aspoň 120 s
+(nebo víc, pokud to hosting povoluje). Pár věcí přesto pomůže:
 
 | Situace | Co udělat |
 | --- | --- |
 | Málo místa na disku | zapněte *Vynechat cache…*, smažte staré zálohy (i jiných pluginů), případně zálohujte zvlášť jen DB |
-| Velmi velký jednotlivý soubor (video, archiv v GB) | musí se zabalit v jednom kroku – zvyšte `max_execution_time` (např. 120) nebo ho vynechte filtrem (viz níže) |
+| Velmi velký jednotlivý soubor (video, archiv v GB) a záloha na něm padá | zvyšte `max_execution_time` (např. 300) – pokud hosting request dřív ukončí (PHP-FPM `request_terminate_timeout`), soubor vynechte filtrem a zálohujte ho přes FTP |
 | `memory_limit` pod 128M | zvyšte na 256M (`php.ini`, `.user.ini` nebo administrace hostingu) |
-| Chcete vynechat další složky | filtr `sitesnap_excluded_dirs` – působí, když je zapnuté *Vynechat cache…* |
+| Chcete vynechat další složky nebo soubory | filtr `sitesnap_excluded_dirs` – působí, když je zapnuté *Vynechat cache…* |
 
-Vynechání vlastních složek – vytvořte soubor `wp-content/mu-plugins/site-snapshot-exclude.php`:
+Vynechání vlastních složek a souborů – vytvořte soubor `wp-content/mu-plugins/site-snapshot-exclude.php`:
 
 ```php
 <?php
 add_filter( 'sitesnap_excluded_dirs', function ( $dirs ) {
-	$dirs[] = WP_CONTENT_DIR . '/uploads/videa';
-	$dirs[] = WP_CONTENT_DIR . '/backups';
+	$dirs[] = WP_CONTENT_DIR . '/uploads/videa';          // celá složka
+	$dirs[] = WP_CONTENT_DIR . '/uploads/2024/prezentace.mp4'; // jeden soubor
 	return $dirs;
 } );
 ```
@@ -344,7 +367,9 @@ nepohnula, se považuje za přerušenou a novou už neblokuje.
 
 **Průběh se zastavil / „Chyba spojení, zkouším znovu…“**
 Plugin opakuje krok až 8× s rostoucí pauzou – výpadek sítě nebo přetížený server přečká. Pokud skončí chybou,
-obnovte stránku a u zálohy klikněte **Pokračovat**; pokračuje od posledního uloženého místa.
+obnovte stránku: záloha se sama rozběhne od posledního uloženého místa. Pokud mezitím uplynulo víc než
+15 minut, je v seznamu **Přerušeno** s tlačítkem **Pokračovat**. Když krok padá opakovaně na stejném místě,
+jde nejspíš o velký soubor – viz [kapitola 11](#11-velké-weby-a-limity-hostingu).
 
 **„Záloha selhala: Zápis selhal (plný disk?)“**
 Došlo místo na disku nebo kvóta hostingu. Uvolněte místo (staré zálohy, cache) a zálohu spusťte znovu.
@@ -382,7 +407,8 @@ Hosting zakázal funkci `disk_free_space`. Na zálohu to nemá vliv.
 
 **Deaktivace** jen vypne plugin a denní úklid – zálohy, přístupy i historie zůstanou.
 
-**Smazání** pluginu (Pluginy → Smazat) odstraní **i všechny zálohy na serveru**, uložené FTP/hosting přístupy
+**Smazání** pluginu (Pluginy → Smazat; na multisite ve správě sítě pro všechny weby sítě) odstraní
+**i všechny zálohy na serveru**, uložené FTP/hosting přístupy
 a historii. Zálohy, které chcete zachovat, si předtím stáhněte.
 
 ---

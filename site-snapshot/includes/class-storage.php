@@ -16,7 +16,9 @@ defined( 'ABSPATH' ) || exit;
 
 final class Storage {
 
-	const OPTION_SUFFIX = 'sitesnap_dir_suffix';
+	const OPTION_SUFFIX      = 'sitesnap_dir_suffix';
+	const OPTION_PROBE       = 'sitesnap_probe_token';
+	const TRANSIENT_EXPOSURE = 'sitesnap_exposure';
 
 	public static function dir() {
 		$suffix = get_option( self::OPTION_SUFFIX );
@@ -49,17 +51,72 @@ final class Storage {
 		}
 		$guards = array(
 			'.htaccess'  => "# Site Snapshot – přímý přístup zakázán\n<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n\tOrder allow,deny\n\tDeny from all\n</IfModule>\n",
-			'web.config' => "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<configuration><system.webServer><authorization><deny users=\"*\" /></authorization></system.webServer></configuration>\n",
+			// IIS URL Authorization (system.webServer/security/authorization).
+			'web.config' => "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<configuration>\n\t<system.webServer>\n\t\t<security>\n\t\t\t<authorization>\n\t\t\t\t<remove users=\"*\" roles=\"\" verbs=\"\" />\n\t\t\t\t<add accessType=\"Deny\" users=\"*\" />\n\t\t\t</authorization>\n\t\t</security>\n\t</system.webServer>\n</configuration>\n",
 			'index.php'  => "<?php\n// Silence is golden.\n",
 			'index.html' => '',
+			'probe.txt'  => 'site-snapshot-probe:' . self::probe_token() . "\n",
 		);
 		foreach ( $guards as $name => $content ) {
 			$path = $dir . '/' . $name;
-			if ( ! file_exists( $path ) ) {
+			// Rewritten when outdated, so plugin updates fix the guards of existing installs.
+			if ( ! file_exists( $path ) || @file_get_contents( $path ) !== $content ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 				file_put_contents( $path, $content ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 			}
 		}
 		return $dir;
+	}
+
+	private static function probe_token() {
+		$token = get_option( self::OPTION_PROBE );
+		if ( ! is_string( $token ) || ! preg_match( '/^[a-z0-9]{32}$/', $token ) ) {
+			$token = strtolower( wp_generate_password( 32, false, false ) );
+			update_option( self::OPTION_PROBE, $token, false );
+		}
+		return $token;
+	}
+
+	/**
+	 * Public URL of the storage dir (it must NOT be reachable – see exposure()).
+	 */
+	public static function url() {
+		$uploads = wp_upload_dir( null, false );
+		return trailingslashit( $uploads['baseurl'] ) . basename( self::dir() );
+	}
+
+	/**
+	 * Self-test of the web server protection: the site requests probe.txt from
+	 * the storage dir over HTTP like any visitor would. Works for every setup
+	 * (Apache, nginx, nginx in front of Apache, IIS, CDN) instead of guessing
+	 * from SERVER_SOFTWARE.
+	 *
+	 * @param bool $refresh Ignore the cached result.
+	 * @return string 'protected' | 'exposed' | 'unknown' (loopback request failed).
+	 */
+	public static function exposure( $refresh = false ) {
+		$cached = get_transient( self::TRANSIENT_EXPOSURE );
+		if ( ! $refresh && in_array( $cached, array( 'protected', 'exposed', 'unknown' ), true ) ) {
+			return $cached;
+		}
+		$result = 'unknown';
+		if ( ! is_wp_error( self::ensure_dir() ) ) {
+			$response = wp_remote_get(
+				self::url() . '/probe.txt',
+				array(
+					'timeout'     => 5,
+					'redirection' => 2,
+					'sslverify'   => false, // Loopback on staging/self-signed certificates.
+					'headers'     => array( 'Cache-Control' => 'no-cache' ),
+				)
+			);
+			if ( ! is_wp_error( $response ) ) {
+				$code   = (int) wp_remote_retrieve_response_code( $response );
+				$body   = (string) wp_remote_retrieve_body( $response );
+				$result = ( 200 === $code && false !== strpos( $body, self::probe_token() ) ) ? 'exposed' : 'protected';
+			}
+		}
+		set_transient( self::TRANSIENT_EXPOSURE, $result, 'protected' === $result ? DAY_IN_SECONDS : HOUR_IN_SECONDS );
+		return $result;
 	}
 
 	/**

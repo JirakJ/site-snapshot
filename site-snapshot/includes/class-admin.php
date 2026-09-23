@@ -21,6 +21,7 @@ final class Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
 		add_action( 'admin_post_sitesnap_save_access', array( $this, 'save_access' ) );
 		add_action( 'admin_post_sitesnap_clear_log', array( $this, 'clear_log' ) );
+		add_action( 'wp_ajax_sitesnap_exposure', array( $this, 'ajax_exposure' ) );
 		add_filter( 'plugin_action_links_' . plugin_basename( SITESNAP_FILE ), array( $this, 'action_links' ) );
 	}
 
@@ -167,13 +168,9 @@ final class Admin {
 			<p><strong><?php esc_html_e( 'Záloha obsahuje citlivé údaje', 'site-snapshot' ); ?></strong> – <?php esc_html_e( 'wp-config.php, hesla k databázi a zadané FTP/hostingové přístupy. Uchovávejte ji v bezpečí a po stažení ji ze serveru smažte.', 'site-snapshot' ); ?></p>
 		</div>
 
-		<?php if ( self::is_nginx() ) : ?>
-			<div class="notice notice-error inline sitesnap-nginx">
-				<p><strong><?php esc_html_e( 'Server běží na nginx – ten ignoruje ochranný soubor .htaccess.', 'site-snapshot' ); ?></strong>
-				<?php esc_html_e( 'Zálohy chrání jen náhodný název složky. Požádejte hosting (nebo doplňte sami) o toto pravidlo do konfigurace webu a nginx znovu načtěte:', 'site-snapshot' ); ?></p>
-				<pre><code><?php echo esc_html( self::nginx_rule() ); ?></code></pre>
-			</div>
-		<?php endif; ?>
+		<div id="sitesnap-exposure" data-status="<?php echo esc_attr( (string) get_transient( Storage::TRANSIENT_EXPOSURE ) ); ?>">
+			<?php self::render_exposure( (string) get_transient( Storage::TRANSIENT_EXPOSURE ) ); ?>
+		</div>
 
 		<h2><?php esc_html_e( 'Zálohy na serveru', 'site-snapshot' ); ?></h2>
 		<table class="widefat striped sitesnap-table">
@@ -246,9 +243,46 @@ final class Admin {
 		<?php
 	}
 
-	private static function is_nginx() {
-		$software = isset( $_SERVER['SERVER_SOFTWARE'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_SOFTWARE'] ) ) : '';
-		return false !== stripos( $software, 'nginx' );
+	/**
+	 * Result of the storage self-test (Storage::exposure()). An empty status
+	 * renders nothing – the browser then runs the test via AJAX.
+	 */
+	public static function render_exposure( $status ) {
+		if ( 'exposed' === $status ) {
+			?>
+			<div class="notice notice-error inline sitesnap-nginx">
+				<p><strong><?php esc_html_e( 'Zálohy jsou z internetu přímo dostupné!', 'site-snapshot' ); ?></strong>
+				<?php esc_html_e( 'Test stáhl kontrolní soubor ze složky záloh bez přihlášení – webový server ignoruje ochranný .htaccess (typicky nginx, nebo nginx před Apachem). Dokud to neopravíte, zálohy po stažení ihned mažte.', 'site-snapshot' ); ?></p>
+				<p><?php esc_html_e( 'Oprava pro nginx – vložte do bloku server { … } webu (nebo pošlete hostingu) a nginx znovu načtěte:', 'site-snapshot' ); ?></p>
+				<pre><code><?php echo esc_html( self::nginx_rule() ); ?></code></pre>
+				<p><?php esc_html_e( 'Apache: povolte pro web AllowOverride (alespoň AuthConfig/Limit), aby platil .htaccess.', 'site-snapshot' ); ?>
+				<button type="button" class="button button-small sitesnap-recheck"><?php esc_html_e( 'Otestovat znovu', 'site-snapshot' ); ?></button></p>
+			</div>
+			<?php
+		} elseif ( 'unknown' === $status ) {
+			?>
+			<div class="notice notice-info inline">
+				<p><?php esc_html_e( 'Ochranu složky záloh se nepodařilo otestovat (web nedokáže volat sám sebe). Ověřte ji podle návodu, kapitola 4.', 'site-snapshot' ); ?>
+				<button type="button" class="button button-small sitesnap-recheck"><?php esc_html_e( 'Otestovat znovu', 'site-snapshot' ); ?></button></p>
+			</div>
+			<?php
+		}
+	}
+
+	public function ajax_exposure() {
+		check_ajax_referer( 'sitesnap', 'nonce' );
+		if ( ! Plugin::current_user_allowed() ) {
+			wp_send_json_error( null, 403 );
+		}
+		$status = Storage::exposure( ! empty( $_POST['refresh'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- checked above.
+		ob_start();
+		self::render_exposure( $status );
+		wp_send_json_success(
+			array(
+				'status' => $status,
+				'html'   => ob_get_clean(),
+			)
+		);
 	}
 
 	/**
@@ -256,19 +290,19 @@ final class Admin {
 	 *
 	 * A "^~" prefix location wins over every regex location regardless of
 	 * order – a plain regex rule would lose to an earlier static-files block
-	 * such as `location ~* \.(zip|txt)$`. Multisite needs a regex for all
-	 * subsites, so there the rule must be placed before other regex blocks.
+	 * such as `location ~* \.(zip|txt)$`. Multisite needs a regex covering all
+	 * subsites and URL aliases, so there the rule must precede other regex blocks.
 	 */
 	public static function nginx_rule() {
-		$uploads = wp_upload_dir( null, false );
-		$path    = untrailingslashit( (string) wp_parse_url( $uploads['baseurl'], PHP_URL_PATH ) );
 		if ( ! is_multisite() ) {
+			$uploads = wp_upload_dir( null, false );
+			$path    = untrailingslashit( (string) wp_parse_url( $uploads['baseurl'], PHP_URL_PATH ) );
 			return 'location ^~ ' . $path . "/site-snapshot- {\n    deny all;\n    return 404;\n}";
 		}
-		$base = preg_replace( '#/sites/\d+$#', '', $path );
-		$base = str_replace( '\\-', '-', preg_quote( $base, '#' ) ); // "-" is literal outside [] – keep the rule readable.
+		// Subdirectory subsites expose uploads under several URL paths (/shop/wp-content/… is
+		// rewritten to /wp-content/…), so anchor on the unique storage dir name, not on a path.
 		return "# Vložte PŘED ostatní bloky \"location ~\" (regexy se vyhodnocují v pořadí).\n"
-			. 'location ~ ^' . $base . "/(sites/[0-9]+/)?site-snapshot- {\n    deny all;\n    return 404;\n}";
+			. "location ~ \"/site-snapshot-[a-z0-9]{16,}(/|$)\" {\n    deny all;\n    return 404;\n}"; // Quoted: nginx would parse "{" as a block.
 	}
 
 	private function status_label( Backup_Job $job ) {

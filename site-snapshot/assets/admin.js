@@ -163,9 +163,29 @@
 		});
 	}
 
+	/* ---------------- Storage protection self-test ---------------- */
+
+	var exposure = document.getElementById('sitesnap-exposure');
+	var checkExposure = function (refresh) {
+		post('sitesnap_exposure', refresh ? { refresh: '1' } : {}).then(function (res) {
+			exposure.dataset.status = res.status;
+			exposure.innerHTML = res.html;
+		}).catch(function () { /* Test is best effort – the docs cover manual verification. */ });
+	};
+	if (exposure && !exposure.dataset.status) {
+		checkExposure(false);
+	}
+
 	/* ---------------- Delete backup ---------------- */
 
 	document.addEventListener('click', function (e) {
+		var recheck = e.target.closest('.sitesnap-recheck');
+		if (recheck && exposure) {
+			recheck.disabled = true;
+			checkExposure(true);
+			return;
+		}
+
 		var del = e.target.closest('.sitesnap-delete');
 		if (del) {
 			if (!window.confirm(t.confirmDelete)) {

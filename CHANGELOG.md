@@ -2,10 +2,22 @@
 
 ## 0.2.0 – 2026-09-23
 
-- **nginx:** na serveru s nginx zobrazí karta Záloha upozornění s pravidlem `location ^~ <uploads>/site-snapshot-`
-  (na multisite regex pro všechny podweby). Ověřeno na nginx 1.31: archiv, výpis složky i `.htaccess` → 404,
-  i s `%2D`, `//`, `/./`, `/../` v adrese a i když je před pravidlem regex blok pro statické soubory.
-  Ochrana `.htaccess` ověřena na Apache 2.4 (403).
+- **Samotest ochrany úložiště:** karta Záloha si přes HTTP (jako nepřihlášený návštěvník) zkusí stáhnout
+  kontrolní `probe.txt` ze složky záloh. Když to jde, zobrazí červené upozornění s pravidlem pro nginx
+  (`location ^~ <uploads>/site-snapshot-`; na multisite `location ~ "/site-snapshot-[a-z0-9]{16,}(/|$)"`).
+  Funguje pro jakýkoli server (i nginx před Apachem, OpenResty, CDN); výsledek v cache 24 h / 1 h,
+  tlačítko „Otestovat znovu“. Ověřeno: PHP dev server → exposed, Apache 2.4 → protected (403),
+  nginx s pravidlem → protected (404 i s `%2D`, `//`, `/./`, `/../` a s regex blokem pro statické soubory),
+  nginx bez pravidla → exposed, multisite s přepisy `/shop/wp-content/…` → 404, nedostupný loopback → unknown.
+- **IIS:** opravený `web.config` (URL Authorization v `system.webServer/security`); ochranné soubory se při
+  aktualizaci pluginu přepíšou, pokud jsou zastaralé.
+- **Odinstalace na multisite** maže zálohy, přístupy a historii všech webů sítě (dřív jen hlavního) a nově
+  i přechodné záznamy (`sitesnap_*` transienty).
+- Filtr `sitesnap_excluded_dirs` umí vynechat i jednotlivé soubory; krok zálohy si vyžádá aspoň 120 s nebo
+  `max_execution_time` hostingu, je-li vyšší (dřív napevno 120 s).
+- Přehled systému ukazuje `zlib` a jestli je PHP 64bitové.
+- **Build** přes `git archive` – ZIP pluginu obsahuje jen verzované soubory. (ZIP u v0.1.0 omylem obsahoval
+  lokální metadata nástroje `.claude-flow/`; asset byl nahrazen čistým buildem.)
 - **Dokumentace:** kompletní návod [`docs/NAVOD.md`](docs/NAVOD.md) se screenshoty – instalace, zabezpečení,
   FTP přístupy, záloha, obnova, velké weby, řešení problémů, odinstalace.
 - Licence GPL-2.0 (`LICENSE`), repozitář je veřejný.
