@@ -3,6 +3,8 @@
 Návod provede instalací, zabezpečením, první zálohou, stažením a **obnovou webu ze zálohy**. Na konci je řešení
 častých problémů a nastavení pro velké weby.
 
+> Chcete jen rychle vidět, kam kliknout? → **[Ovládání krok za krokem](OVLADANI.md)** (obrázkový průvodce).
+
 **Obsah**
 
 1. [K čemu plugin je](#1-k-čemu-plugin-je)
@@ -62,7 +64,7 @@ funguje i na levném sdíleném hostingu.
 ### A) Přes administraci (doporučeno)
 
 1. Stáhněte z [Releases](https://github.com/JirakJ/site-snapshot/releases/latest) soubor **`site-snapshot-X.Y.Z.zip`** (ne „Source code“).
-2. V administraci otevřete **Pluginy → Přidat nový → Nahrát plugin**.
+2. V administraci otevřete **Pluginy → Přidat plugin → Nahrát plugin**.
 3. Vyberte stažený ZIP, klikněte **Instalovat** a pak **Aktivovat**.
 4. Plugin najdete v menu **Nástroje → Site Snapshot**.
 
@@ -79,7 +81,7 @@ funguje i na levném sdíleném hostingu.
 ### C) Přes WP-CLI
 
 ```sh
-wp plugin install https://github.com/JirakJ/site-snapshot/releases/download/v0.2.0/site-snapshot-0.2.0.zip --activate
+wp plugin install https://github.com/JirakJ/site-snapshot/releases/download/v0.2.1/site-snapshot-0.2.1.zip --activate
 ```
 
 (Číslo verze na obou místech upravte podle [posledního releasu](https://github.com/JirakJ/site-snapshot/releases/latest).)
@@ -115,7 +117,7 @@ bez přihlášení**. Nezáleží tedy na typu serveru ani na tom, jestli před 
 
 Tlačítko **Otestovat znovu** test zopakuje hned (např. po úpravě konfigurace serveru).
 
-![Upozornění s pravidlem pro nginx](img/07-nginx.jpg)
+![Upozornění s pravidlem pro nginx](img/navod-ochrana.jpg)
 
 ### nginx
 
@@ -171,7 +173,7 @@ pohromadě:
    administrace hostingu, přihlášení k hostingu, odkaz na phpMyAdmin/Adminer a volnou poznámku.
 3. Klikněte **Uložit přístupy**.
 
-![Systém a přístupy – přístupové údaje](img/05-pristupy.jpg)
+![Systém a přístupy – přístupové údaje](img/navod-pristupy.jpg)
 
 - Hodnoty se ukládají **šifrovaně** (libsodium, klíč odvozený z bezpečnostních klíčů ve `wp-config.php`) – únik
   samotné databáze je neprozradí.
@@ -182,7 +184,7 @@ pohromadě:
 
 Horní část stránky ukazuje verze a limity – hodí se při komunikaci s podporou hostingu:
 
-![Systém a přístupy – verze a limity](img/04-system.jpg)
+![Systém a přístupy – verze a limity](img/navod-system.jpg)
 
 ---
 
@@ -197,17 +199,17 @@ Horní část stránky ukazuje verze a limity – hodí se při komunikaci s pod
      Migration, Duplicator, WPvivid, BackWPup, LiteSpeed a Divi cache. Doporučeno nechat zapnuté.
 3. Klikněte **Vytvořit zálohu**.
 
-![Karta Záloha](img/01-zaloha.jpg)
+![Karta Záloha](img/navod-zaloha.jpg)
 
 Záloha běží po krátkých krocích a ukazuje průběh:
 
-![Průběh zálohy](img/02-prubeh.jpg)
+![Průběh zálohy](img/navod-prubeh.jpg)
 
 - **Nechte stránku otevřenou**, dokud záloha neskončí. Při pokusu o odchod se prohlížeč zeptá.
 - Když stránku zavřete nebo spadne připojení, záloha se **pozastaví a nic se neztratí**:
   - do 15 minut se po otevření karty *Záloha* rozběhne sama,
   - později je v seznamu jako **Přerušeno** s tlačítkem **Pokračovat** (pokračuje od posledního uloženého místa),
-  - přerušená záloha, na kterou se 24 hodin nesáhne, se automaticky smaže.
+  - přerušenou zálohu, na kterou se nesáhne, smaže denní úklid (nejdřív po 24 h, obvykle do 48 h; spouští ho WP-Cron, tedy až návštěva webu).
 - **Zrušit zálohu** ji zastaví a smaže rozpracované soubory.
 - Najednou může běžet jen jedna záloha.
 
@@ -240,7 +242,7 @@ uvádí její původní cestu.
 2. Uložte ho na bezpečné místo (šifrovaný disk, správce hesel s přílohami…) – obsahuje hesla.
 3. Ze serveru zálohu **smažte** tlačítkem **Smazat**.
 
-Nedokončené, zrušené a neúspěšné zálohy plugin sám maže po 24 hodinách. Hotové zálohy nechává, dokud je nesmažete.
+Nedokončené, zrušené a neúspěšné zálohy maže denní úklid nejdřív po 24 hodinách (obvykle do 48 h – spouští ho WP-Cron, tedy až návštěva webu). Hotové zálohy nechává, dokud je nesmažete.
 
 ---
 
@@ -248,7 +250,7 @@ Nedokončené, zrušené a neúspěšné zálohy plugin sám maže po 24 hodiná
 
 Karta **Soubory** funguje jako jednoduchý FTP klient jen pro čtení:
 
-![Prohlížeč souborů](img/03-soubory.jpg)
+![Prohlížeč souborů](img/navod-soubory.jpg)
 
 - klikáním procházíte složky, nahoře je drobečková navigace,
 - u souboru **Stáhnout**, u složky **ZIP** (stáhne složku včetně podsložek),
@@ -270,7 +272,7 @@ Karta **Historie** zaznamenává, kdo (uživatel a IP adresa) a kdy:
 - stáhl soubor nebo složku,
 - zobrazil nebo uložil přístupové údaje (zobrazení nejvýš jednou za 10 minut na uživatele).
 
-![Historie](img/06-historie.jpg)
+![Historie](img/navod-historie.jpg)
 
 Uchovává se posledních 500 záznamů. Tlačítko **Vymazat historii** smaže záznamy – samotné vymazání se ale zapíše.
 

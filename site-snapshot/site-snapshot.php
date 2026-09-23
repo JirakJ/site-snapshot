@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Site Snapshot
  * Description:       Prohlížeč souborů webu (jako FTP klient) a kompletní záloha souborů + databáze do jednoho ZIPu – rychlý backup před úpravami webu. Včetně přehledu přístupových údajů a verzí PHP / databáze.
- * Version:           0.2.0
+ * Version:           0.2.1
  * Requires at least: 5.6
  * Requires PHP:      7.4
  * Author:            Jakub Jirák
@@ -15,11 +15,12 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'SITESNAP_VERSION', '0.2.0' );
+define( 'SITESNAP_VERSION', '0.2.1' );
 define( 'SITESNAP_FILE', __FILE__ );
 define( 'SITESNAP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SITESNAP_URL', plugin_dir_url( __FILE__ ) );
 
+require_once SITESNAP_DIR . 'includes/class-format.php';
 require_once SITESNAP_DIR . 'includes/class-storage.php';
 require_once SITESNAP_DIR . 'includes/class-activity-log.php';
 require_once SITESNAP_DIR . 'includes/class-system-info.php';

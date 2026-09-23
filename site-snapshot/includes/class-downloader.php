@@ -38,7 +38,7 @@ final class Downloader {
 		if ( ! $job || 'done' !== $job->get( 'status' ) ) {
 			wp_die( esc_html__( 'Záloha nenalezena nebo ještě není dokončená.', 'site-snapshot' ), 404 );
 		}
-		Activity_Log::add( 'backup_downloaded', $id . ' – ' . size_format( (int) $job->get( 'zip_size' ), 1 ) );
+		Activity_Log::add( 'backup_downloaded', $id . ' – ' . Format::size( (int) $job->get( 'zip_size' ), 1 ) );
 		Storage::send_file( $job->archive_path(), (string) $job->get( 'download' ), 'application/zip' );
 	}
 

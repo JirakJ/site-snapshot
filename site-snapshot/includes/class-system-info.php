@@ -15,7 +15,7 @@ final class System_Info {
 	 * @return array<string, array{title: string, rows: array<string, string>}>
 	 */
 	public static function collect() {
-		return array(
+		$sections = array(
 			'wordpress' => array(
 				'title' => __( 'WordPress', 'site-snapshot' ),
 				'rows'  => self::wordpress(),
@@ -33,6 +33,7 @@ final class System_Info {
 				'rows'  => self::server(),
 			),
 		);
+		return $sections;
 	}
 
 	private static function wordpress() {
@@ -109,7 +110,7 @@ final class System_Info {
 			__( 'Prefix tabulek', 'site-snapshot' )  => $wpdb->base_prefix,
 			__( 'Tabulek celkem', 'site-snapshot' )  => $size ? (string) $size->tables_count : '',
 			__( 'Tabulek s prefixem', 'site-snapshot' ) => (string) $prefixed,
-			__( 'Velikost databáze', 'site-snapshot' ) => $size ? size_format( (float) $size->bytes, 1 ) : '',
+			__( 'Velikost databáze', 'site-snapshot' ) => $size ? Format::size( (float) $size->bytes, 1 ) : '',
 		);
 	}
 
@@ -127,7 +128,7 @@ final class System_Info {
 			'DOCUMENT_ROOT'                             => isset( $_SERVER['DOCUMENT_ROOT'] ) ? wp_normalize_path( sanitize_text_field( wp_unslash( $_SERVER['DOCUMENT_ROOT'] ) ) ) : '',
 			__( 'PHP běží jako uživatel', 'site-snapshot' ) => is_array( $user ) ? $user['name'] : (string) get_current_user(),
 			'HTTPS'                                     => is_ssl() ? __( 'ano', 'site-snapshot' ) : __( 'ne', 'site-snapshot' ),
-			__( 'Volné místo na disku', 'site-snapshot' ) => false !== $free ? size_format( $free, 1 ) . ( $total ? ' / ' . size_format( $total, 1 ) : '' ) : __( 'nezjištěno', 'site-snapshot' ),
+			__( 'Volné místo na disku', 'site-snapshot' ) => false !== $free ? Format::size( $free, 1 ) . ( $total ? ' / ' . Format::size( $total, 1 ) : '' ) : __( 'nezjištěno', 'site-snapshot' ),
 			__( 'Čas serveru', 'site-snapshot' )        => wp_date( 'Y-m-d H:i:s T' ),
 		);
 	}

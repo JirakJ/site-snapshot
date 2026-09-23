@@ -45,7 +45,7 @@ final class Report {
 		$t[] = self::line( 'ID', $meta['backup_id'] );
 		$t[] = self::line( 'Vytvořeno', $meta['created'] );
 		$t[] = self::line( 'Vytvořil', $meta['created_by'] );
-		$t[] = self::line( 'Soubory', $meta['files'] . ' (' . size_format( $meta['files_bytes'], 1 ) . ')' );
+		$t[] = self::line( 'Soubory', $meta['files'] . ' (' . Format::size( $meta['files_bytes'] ) . ')' );
 		$t[] = self::line( 'Databáze', $meta['db_tables'] . ' tabulek, ' . $meta['db_rows'] . ' řádků' );
 		$t[] = '';
 		foreach ( $system as $section ) {
