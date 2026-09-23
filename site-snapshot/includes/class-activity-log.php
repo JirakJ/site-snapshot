@@ -24,7 +24,7 @@ final class Activity_Log {
 				'user'    => $user && $user->exists() ? $user->user_login : '(system)',
 				'ip'      => self::client_ip(),
 				'action'  => (string) $action,
-				'details' => html_entity_decode( (string) $details, ENT_QUOTES, 'UTF-8' ), // size_format() may contain "&nbsp;".
+				'details' => (string) $details,
 			)
 		);
 		update_option( self::OPTION, array_slice( $log, 0, self::MAX_ROWS ), false );

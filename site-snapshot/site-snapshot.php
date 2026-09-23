@@ -20,6 +20,7 @@ define( 'SITESNAP_FILE', __FILE__ );
 define( 'SITESNAP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SITESNAP_URL', plugin_dir_url( __FILE__ ) );
 
+require_once SITESNAP_DIR . 'includes/class-format.php';
 require_once SITESNAP_DIR . 'includes/class-storage.php';
 require_once SITESNAP_DIR . 'includes/class-activity-log.php';
 require_once SITESNAP_DIR . 'includes/class-system-info.php';

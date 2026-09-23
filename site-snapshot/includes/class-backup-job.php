@@ -310,8 +310,7 @@ final class Backup_Job {
 			'status'      => $s['status'],
 			'phase'       => $s['phase'],
 			'progress'    => $this->progress(),
-			// number_format_i18n() returns "&nbsp;" separators in some locales (cs_CZ) – the browser shows this as text.
-			'message'     => html_entity_decode( $this->message( $table ), ENT_QUOTES, 'UTF-8' ),
+			'message'     => $this->message( $table ),
 			'files_done'  => $s['files_done'],
 			'files_total' => $s['files_total'],
 			'bytes_done'  => $s['bytes_done'],
@@ -363,18 +362,18 @@ final class Backup_Job {
 		switch ( $s['phase'] ) {
 			case 'scan':
 				/* translators: 1: files found, 2: their size */
-				return sprintf( __( 'Procházím soubory webu… (%1$s souborů, %2$s)', 'site-snapshot' ), number_format_i18n( $s['files_total'] ), size_format( $s['bytes_total'], 1 ) );
+				return sprintf( __( 'Procházím soubory webu… (%1$s souborů, %2$s)', 'site-snapshot' ), Format::number( $s['files_total'] ), Format::size( $s['bytes_total'], 1 ) );
 			case 'db':
 				/* translators: 1: table name, 2: number of rows exported so far */
-				return sprintf( __( 'Exportuji databázi – tabulka %1$s (%2$s řádků celkem)…', 'site-snapshot' ), $table, number_format_i18n( $s['rows_done'] ) );
+				return sprintf( __( 'Exportuji databázi – tabulka %1$s (%2$s řádků celkem)…', 'site-snapshot' ), $table, Format::number( $s['rows_done'] ) );
 			case 'files':
 				/* translators: 1: files done, 2: files total, 3: bytes done, 4: bytes total */
 				return sprintf(
 					__( 'Balím soubory %1$s / %2$s (%3$s / %4$s)…', 'site-snapshot' ),
-					number_format_i18n( $s['files_done'] ),
-					number_format_i18n( $s['files_total'] ),
-					size_format( $s['bytes_done'], 1 ),
-					size_format( $s['bytes_total'], 1 )
+					Format::number( $s['files_done'] ),
+					Format::number( $s['files_total'] ),
+					Format::size( $s['bytes_done'], 1 ),
+					Format::size( $s['bytes_total'], 1 )
 				);
 			case 'finalize':
 				return __( 'Dokončuji archiv…', 'site-snapshot' );
@@ -789,7 +788,7 @@ final class Backup_Job {
 		self::release_active( $this->state['id'] );
 		Activity_Log::add(
 			'backup_completed',
-			sprintf( '%s – %s, %d souborů', $this->state['id'], size_format( $this->state['zip_size'], 1 ), $this->state['files_done'] )
+			sprintf( '%s – %s, %d souborů', $this->state['id'], Format::size( $this->state['zip_size'], 1 ), $this->state['files_done'] )
 		);
 	}
 
