@@ -100,9 +100,22 @@ final class Downloader {
 	private function requested_path() {
 		$rel  = isset( $_GET['path'] ) ? wp_unslash( $_GET['path'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- validated by File_Browser::resolve().
 		$path = File_Browser::resolve( (string) $rel );
-		if ( null === $path || 0 === strpos( $path . '/', Storage::dir() . '/' ) ) {
+		if ( null === $path || 0 === strpos( $path . '/', Storage::dir() . '/' ) || self::inside_any_storage( $path ) ) {
 			wp_die( esc_html__( 'Neplatná cesta.', 'site-snapshot' ), 400 );
 		}
 		return $path;
+	}
+
+	/**
+	 * Refuses any path inside a (sub)site's backup storage dir.
+	 */
+	private static function inside_any_storage( $path ) {
+		$root = File_Browser::root();
+		for ( $p = $path; strlen( $p ) > strlen( $root ); $p = dirname( $p ) ) {
+			if ( is_dir( $p ) && Storage::is_storage_dir( $p ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

@@ -224,6 +224,9 @@ final class Admin {
 						<?php if ( 'done' === $status ) : ?>
 							<a class="button button-primary" href="<?php echo esc_url( Downloader::url( 'sitesnap_download_backup', array( 'id' => $job->get( 'id' ) ) ) ); ?>"><?php esc_html_e( 'Stáhnout ZIP', 'site-snapshot' ); ?></a>
 						<?php endif; ?>
+						<?php if ( 'running' === $status && $job->is_stale() && null === $running ) : ?>
+							<button type="button" class="button button-primary sitesnap-resume" data-id="<?php echo esc_attr( $job->get( 'id' ) ); ?>"><?php esc_html_e( 'Pokračovat', 'site-snapshot' ); ?></button>
+						<?php endif; ?>
 						<?php if ( 'running' !== $status || $job->is_stale() ) : ?>
 							<button type="button" class="button sitesnap-delete" data-id="<?php echo esc_attr( $job->get( 'id' ) ); ?>"><?php esc_html_e( 'Smazat', 'site-snapshot' ); ?></button>
 						<?php endif; ?>

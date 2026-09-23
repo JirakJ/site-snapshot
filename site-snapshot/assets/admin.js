@@ -148,6 +148,19 @@
 		if (box.dataset.running) {
 			run(box.dataset.running);
 		}
+
+		// Resume an interrupted job from where it stopped.
+		document.addEventListener('click', function (e) {
+			var resume = e.target.closest('.sitesnap-resume');
+			if (!resume || currentId) {
+				return;
+			}
+			resume.disabled = true;
+			box.hidden = false;
+			box.classList.remove('is-failed');
+			box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			run(resume.dataset.id);
+		});
 	}
 
 	/* ---------------- Delete backup ---------------- */

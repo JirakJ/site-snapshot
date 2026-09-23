@@ -30,6 +30,16 @@ final class Storage {
 	}
 
 	/**
+	 * True for any Site Snapshot storage dir – also other multisite subsites'
+	 * (uploads/sites/N/site-snapshot-*), which have their own random suffix.
+	 */
+	public static function is_storage_dir( $path ) {
+		return 1 === preg_match( '/^site-snapshot-[a-z0-9]{16,}$/', basename( $path ) )
+			&& is_file( $path . '/.htaccess' )
+			&& false !== strpos( (string) @file_get_contents( $path . '/.htaccess', false, null, 0, 64 ), 'Site Snapshot' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+	}
+
+	/**
 	 * Creates the storage dir with protection files. Returns the path or WP_Error.
 	 */
 	public static function ensure_dir() {

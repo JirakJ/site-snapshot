@@ -58,8 +58,8 @@ final class File_Browser {
 				continue;
 			}
 			$path = $absolute . '/' . $name;
-			if ( wp_normalize_path( $path ) === $storage ) {
-				continue; // Never expose our own backup storage in the listing.
+			if ( wp_normalize_path( $path ) === $storage || Storage::is_storage_dir( $path ) ) {
+				continue; // Never expose backup storage (ours or a subsite's) in the listing.
 			}
 			$is_dir    = is_dir( $path );
 			$stat      = @lstat( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
@@ -104,7 +104,7 @@ final class File_Browser {
 					if ( $item->isLink() ) {
 						return false;
 					}
-					return ! in_array( wp_normalize_path( $item->getPathname() ), $exclude, true );
+					return ! in_array( wp_normalize_path( $item->getPathname() ), $exclude, true ) && ! Storage::is_storage_dir( $item->getPathname() );
 				}
 				return true;
 			}

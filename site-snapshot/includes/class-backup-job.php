@@ -4,8 +4,9 @@
  *
  * The browser drives the job with short AJAX "step" requests, each limited by
  * a time budget, so large sites work even with a 30 s max_execution_time.
- * Progress is committed to job.json; a step that dies half-way is rolled back
- * to the last commit by the next step (files are truncated to committed size).
+ * Every phase (including the file scan) commits its progress to job.json; a
+ * step that dies half-way is rolled back to the last commit by the next step
+ * (work files are truncated to their committed sizes).
  *
  * @package SiteSnapshot
  */
@@ -97,19 +98,32 @@ final class Backup_Job {
 		if ( ! $job ) {
 			wp_send_json_error( array( 'message' => __( 'Záloha nenalezena.', 'site-snapshot' ) ), 404 );
 		}
+		if ( 'running' === $job->state['status'] ) {
+			// Resuming an interrupted (stale) job is allowed unless another one is active.
+			$active = self::running();
+			if ( $active && $active->state['id'] !== $job->state['id'] ) {
+				wp_send_json_error( array( 'message' => __( 'Jiná záloha právě běží.', 'site-snapshot' ) ), 409 );
+			}
+			update_option( self::ACTIVE_OPTION, $job->state['id'], false );
+		}
 		$job->run_step();
 		wp_send_json_success( $job->public_state() );
 	}
 
+	/**
+	 * Cancelling never races a running step: it only raises a flag. Whoever
+	 * holds the job lock (this request if the job is idle, otherwise the
+	 * running step at its next checkpoint) tears the job down.
+	 */
 	public static function ajax_cancel() {
 		self::guard();
 		$job = self::load( self::request_id() );
 		if ( $job && 'running' === $job->state['status'] ) {
-			$job->state['status'] = 'cancelled';
-			$job->save();
-			Activity_Log::add( 'backup_cancelled', $job->state['id'] );
-			delete_option( self::ACTIVE_OPTION );
-			Storage::delete_tree( $job->dir );
+			touch( $job->dir . '/cancel' );
+			$lock = $job->acquire_lock();
+			if ( $lock ) {
+				$job->teardown_cancelled( $lock );
+			}
 		}
 		wp_send_json_success();
 	}
@@ -122,6 +136,7 @@ final class Backup_Job {
 			wp_send_json_error( array( 'message' => __( 'Běžící zálohu nejdřív zrušte.', 'site-snapshot' ) ), 409 );
 		}
 		Storage::delete_tree( Storage::dir() . '/' . $id );
+		self::release_active( $id );
 		Activity_Log::add( 'backup_deleted', $id );
 		wp_send_json_success();
 	}
@@ -146,10 +161,10 @@ final class Backup_Job {
 		// Blocks directory listing where .htaccess is ignored (nginx with autoindex).
 		file_put_contents( $dir . '/index.php', "<?php\n// Silence is golden.\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 		file_put_contents( $dir . '/index.html', '' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-		$user  = wp_get_current_user();
-		$host  = wp_parse_url( home_url(), PHP_URL_HOST );
-		$phase = $options['files'] ? 'scan' : 'db';
-		$job   = new self(
+
+		$user = wp_get_current_user();
+		$host = wp_parse_url( home_url(), PHP_URL_HOST );
+		$job  = new self(
 			$dir,
 			array(
 				'id'           => $id,
@@ -159,20 +174,27 @@ final class Backup_Job {
 				'finished'     => 0,
 				'user'         => $user->user_login,
 				'status'       => 'running',
-				'phase'        => $phase,
+				'phase'        => $options['files'] ? 'scan' : 'db',
 				'options'      => $options,
 				'download'     => sanitize_file_name( ( $host ? $host : 'site' ) . '-' . wp_date( 'Y-m-d-His' ) . '.zip' ),
+				'sources'      => $options['files'] ? self::sources() : array(),
+				// Scan: queue of directories (queue.txt) and list of files (files.txt).
+				'queue_read'   => 0,
+				'queue_size'   => 0,
+				'list_size'    => 0,
 				'files_total'  => 0,
 				'bytes_total'  => 0,
+				// Pack.
 				'files_done'   => 0,
 				'bytes_done'   => 0,
 				'list_offset'  => 0,
+				'zip'          => array( 'archive' => 0, 'central' => 0, 'entries' => 0 ),
+				// Database.
 				'tables'       => array(),
 				'table_index'  => 0,
-				'table_offset' => 0,
+				'table_cursor' => null,
 				'rows_done'    => 0,
 				'sql_size'     => 0,
-				'zip'          => array( 'archive' => 0, 'central' => 0, 'entries' => 0 ),
 				'zip_size'     => 0,
 				'warnings'     => array(),
 				'error'        => '',
@@ -242,6 +264,16 @@ final class Backup_Job {
 	}
 
 	/**
+	 * Clears the active-job marker only when it still points at $id, so a
+	 * finishing old job can never unmark a newer one.
+	 */
+	private static function release_active( $id ) {
+		if ( get_option( self::ACTIVE_OPTION ) === $id ) {
+			delete_option( self::ACTIVE_OPTION );
+		}
+	}
+
+	/**
 	 * Daily cron: removes jobs that never finished (browser closed etc.).
 	 */
 	public static function cleanup_abandoned() {
@@ -250,6 +282,7 @@ final class Backup_Job {
 				&& time() - (int) $job->state['updated'] > DAY_IN_SECONDS;
 			if ( $abandoned ) {
 				Storage::delete_tree( $job->dir );
+				self::release_active( $job->state['id'] );
 			}
 		}
 	}
@@ -308,10 +341,10 @@ final class Backup_Job {
 				$done += $db_share * $s['table_index'] / $tables;
 			}
 		}
-		if ( $s['options']['files'] && $s['bytes_total'] > 0 ) {
-			$done += $files_share * min( 1, $s['bytes_done'] / $s['bytes_total'] );
-		} elseif ( $s['options']['files'] && 'finalize' === $s['phase'] ) {
+		if ( $s['options']['files'] && 'finalize' === $s['phase'] ) {
 			$done += $files_share;
+		} elseif ( $s['options']['files'] && 'files' === $s['phase'] && $s['bytes_total'] > 0 ) {
+			$done += $files_share * min( 1, $s['bytes_done'] / $s['bytes_total'] );
 		}
 		return (int) min( 99, floor( $done ) );
 	}
@@ -328,7 +361,8 @@ final class Backup_Job {
 		}
 		switch ( $s['phase'] ) {
 			case 'scan':
-				return __( 'Procházím soubory webu…', 'site-snapshot' );
+				/* translators: 1: files found, 2: their size */
+				return sprintf( __( 'Procházím soubory webu… (%1$s souborů, %2$s)', 'site-snapshot' ), number_format_i18n( $s['files_total'] ), size_format( $s['bytes_total'], 1 ) );
 			case 'db':
 				/* translators: 1: table name, 2: number of rows exported so far */
 				return sprintf( __( 'Exportuji databázi – tabulka %1$s (%2$s řádků celkem)…', 'site-snapshot' ), $table, number_format_i18n( $s['rows_done'] ) );
@@ -351,12 +385,47 @@ final class Backup_Job {
 	/* Steps                                                               */
 	/* ------------------------------------------------------------------ */
 
+	/**
+	 * @return resource|null Lock handle, or null when another request holds it.
+	 */
+	private function acquire_lock() {
+		$lock = @fopen( $this->dir . '/job.lock', 'c' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		if ( ! $lock ) {
+			return null;
+		}
+		if ( ! flock( $lock, LOCK_EX | LOCK_NB ) ) {
+			fclose( $lock ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+			return null;
+		}
+		return $lock;
+	}
+
+	private static function release_lock( $lock ) {
+		flock( $lock, LOCK_UN );
+		fclose( $lock ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+	}
+
+	private function cancel_requested() {
+		return file_exists( $this->dir . '/cancel' );
+	}
+
+	/**
+	 * Called with the job lock held: marks the job cancelled and removes its files.
+	 */
+	private function teardown_cancelled( $lock ) {
+		$this->state['status'] = 'cancelled';
+		self::release_active( $this->state['id'] );
+		Activity_Log::add( 'backup_cancelled', $this->state['id'] );
+		self::release_lock( $lock );
+		Storage::delete_tree( $this->dir );
+	}
+
 	public function run_step() {
 		if ( 'running' !== $this->state['status'] ) {
 			return;
 		}
-		$lock = @fopen( $this->dir . '/job.lock', 'c' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
-		if ( ! $lock || ! flock( $lock, LOCK_EX | LOCK_NB ) ) {
+		$lock = $this->acquire_lock();
+		if ( ! $lock ) {
 			return; // Another step of this job is still running – the browser will poll again.
 		}
 		// Re-read under the lock: a previous step may have committed meanwhile.
@@ -365,8 +434,7 @@ final class Backup_Job {
 			$this->state = $fresh->state;
 		}
 		if ( 'running' !== $this->state['status'] ) {
-			flock( $lock, LOCK_UN );
-			fclose( $lock ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+			self::release_lock( $lock );
 			return;
 		}
 
@@ -377,10 +445,10 @@ final class Backup_Job {
 		$deadline = microtime( true ) + self::time_budget();
 
 		try {
-			while ( 'running' === $this->state['status'] && microtime( true ) < $deadline ) {
+			while ( 'running' === $this->state['status'] && microtime( true ) < $deadline && ! $this->cancel_requested() ) {
 				switch ( $this->state['phase'] ) {
 					case 'scan':
-						$this->step_scan();
+						$this->step_scan( $deadline );
 						break;
 					case 'db':
 						$this->step_db( $deadline );
@@ -398,15 +466,17 @@ final class Backup_Job {
 		} catch ( \Throwable $e ) {
 			$this->fail( $e->getMessage() );
 		}
-		if ( is_dir( $this->dir ) ) { // Gone when the job was cancelled meanwhile.
-			try {
-				$this->save();
-			} catch ( \Throwable $e ) {
-				unset( $e ); // Nothing more to do – the browser sees the last committed state.
-			}
+
+		if ( 'running' === $this->state['status'] && $this->cancel_requested() ) {
+			$this->teardown_cancelled( $lock );
+			return;
 		}
-		flock( $lock, LOCK_UN );
-		fclose( $lock ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+		try {
+			$this->save();
+		} catch ( \Throwable $e ) {
+			unset( $e ); // Nothing more to do – the browser sees the last committed state.
+		}
+		self::release_lock( $lock );
 	}
 
 	/**
@@ -418,40 +488,151 @@ final class Backup_Job {
 		return max( 0.01, (float) apply_filters( 'sitesnap_step_seconds', $budget ) );
 	}
 
-	private function step_scan() {
-		$exclude = array();
-		if ( $this->state['options']['exclude_cache'] ) {
-			$exclude = self::cache_dirs();
-		}
-		$list = @fopen( $this->dir . '/files.txt', 'wb' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
-		if ( ! $list ) {
-			throw new \RuntimeException( __( 'Nelze zapsat seznam souborů.', 'site-snapshot' ) );
-		}
-		if ( function_exists( 'set_time_limit' ) ) {
-			@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		}
-		$root  = File_Browser::root();
-		$count = 0;
-		$bytes = 0;
-		foreach ( File_Browser::walk( $root, $exclude ) as $path ) {
-			$rel = File_Browser::relative( $path );
-			if ( false !== strpbrk( $rel, "\r\n" ) ) {
-				$this->warn( sprintf( __( 'Přeskočeno (neplatný název): %s', 'site-snapshot' ), str_replace( array( "\r", "\n" ), '?', $rel ) ) );
+	/**
+	 * What to back up: the WordPress root under files/, plus parts of the
+	 * install that live outside it (wp-config.php one level up, wp-content /
+	 * plugins / uploads moved elsewhere – e.g. Bedrock) under extra/.
+	 *
+	 * @return array<int, array{path: string, zip: string, type: string}>
+	 */
+	public static function sources() {
+		$root    = File_Browser::root();
+		$sources = array(
+			array(
+				'path' => $root,
+				'zip'  => 'files',
+				'type' => 'dir',
+			),
+		);
+		$uploads    = wp_upload_dir( null, false );
+		$candidates = array( WP_CONTENT_DIR, WP_PLUGIN_DIR, WPMU_PLUGIN_DIR, get_theme_root(), $uploads['basedir'] );
+		$used       = array( 'files' => true );
+		foreach ( $candidates as $candidate ) {
+			$real = realpath( (string) $candidate );
+			if ( false === $real || ! is_dir( $real ) ) {
 				continue;
 			}
-			if ( ! is_readable( $path ) ) {
-				$this->warn( sprintf( __( 'Přeskočeno (nelze číst): %s', 'site-snapshot' ), $rel ) );
-				continue;
+			$real = wp_normalize_path( $real );
+			foreach ( $sources as $source ) {
+				if ( 'dir' === $source['type'] && ( $real === $source['path'] || 0 === strpos( $real, $source['path'] . '/' ) ) ) {
+					continue 2; // Already covered.
+				}
 			}
-			fwrite( $list, $rel . "\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
-			++$count;
-			$bytes += (int) @filesize( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			$zip = 'extra/' . basename( $real );
+			for ( $i = 2; isset( $used[ $zip ] ); $i++ ) {
+				$zip = 'extra/' . basename( $real ) . '-' . $i;
+			}
+			$used[ $zip ] = true;
+			$sources[]    = array(
+				'path' => $real,
+				'zip'  => $zip,
+				'type' => 'dir',
+			);
 		}
-		fclose( $list ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+		// WordPress also loads wp-config.php from the parent dir if that dir is not another install.
+		$parent = dirname( $root );
+		if ( ! file_exists( $root . '/wp-config.php' ) && is_file( $parent . '/wp-config.php' ) && ! file_exists( $parent . '/wp-settings.php' ) ) {
+			$sources[] = array(
+				'path' => $parent . '/wp-config.php',
+				'zip'  => 'extra/wp-config.php',
+				'type' => 'file',
+			);
+		}
+		return $sources;
+	}
 
-		$this->state['files_total'] = $count;
-		$this->state['bytes_total'] = $bytes;
-		$this->state['phase']       = $this->state['options']['db'] ? 'db' : 'files';
+	/**
+	 * Breadth-first scan, resumable: queue.txt holds "zip-prefix<TAB>abs-dir"
+	 * lines still to read, files.txt receives "zip-name<TAB>abs-path" lines.
+	 */
+	private function step_scan( $deadline ) {
+		$queue_path = $this->dir . '/queue.txt';
+		$list_path  = $this->dir . '/files.txt';
+		$queue      = self::open_truncated( $queue_path, $this->state['queue_size'] );
+		$list       = self::open_truncated( $list_path, $this->state['list_size'] );
+		$exclude    = $this->state['options']['exclude_cache'] ? self::cache_dirs() : array();
+
+		try {
+			if ( 0 === $this->state['queue_size'] && 0 === $this->state['list_size'] ) {
+				foreach ( $this->state['sources'] as $source ) {
+					if ( 'dir' === $source['type'] ) {
+						self::write_all( $queue, $source['zip'] . "\t" . $source['path'] . "\n" );
+					} else {
+						$this->add_to_list( $list, $source['zip'], $source['path'] );
+					}
+				}
+				$this->commit_scan( $queue, $list );
+			}
+
+			$last_commit = microtime( true );
+			while ( microtime( true ) < $deadline ) {
+				fseek( $queue, $this->state['queue_read'] );
+				$line = fgets( $queue );
+				fseek( $queue, 0, SEEK_END );
+				if ( false === $line ) {
+					$this->state['phase'] = $this->state['options']['db'] ? 'db' : 'files';
+					break;
+				}
+				$next = $this->state['queue_read'] + strlen( $line );
+				list( $prefix, $dir ) = explode( "\t", rtrim( $line, "\n" ), 2 );
+				$this->scan_dir( $queue, $list, $prefix, $dir, $exclude );
+				$this->state['queue_read'] = $next;
+				if ( microtime( true ) - $last_commit > self::COMMIT_SECONDS ) {
+					$this->commit_scan( $queue, $list );
+					$last_commit = microtime( true );
+				}
+			}
+			$this->commit_scan( $queue, $list );
+		} finally {
+			fclose( $queue ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+			fclose( $list ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
+		}
+	}
+
+	private function scan_dir( $queue, $list, $prefix, $dir, array $exclude ) {
+		$names = @scandir( $dir ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		if ( false === $names ) {
+			$this->warn( sprintf( __( 'Složku nelze přečíst: %s', 'site-snapshot' ), $prefix ) );
+			return;
+		}
+		foreach ( $names as $name ) {
+			if ( '.' === $name || '..' === $name ) {
+				continue;
+			}
+			$path = $dir . '/' . $name;
+			$zip  = $prefix . '/' . $name;
+			if ( false !== strpbrk( $name, "\t\r\n" ) ) {
+				$this->warn( sprintf( __( 'Přeskočeno (neplatný název): %s', 'site-snapshot' ), str_replace( array( "\t", "\r", "\n" ), '?', $zip ) ) );
+				continue;
+			}
+			if ( is_dir( $path ) ) {
+				// Symlinked dirs are skipped (loops, content outside the site).
+				if ( is_link( $path ) || Storage::is_storage_dir( $path ) || in_array( $path, $exclude, true ) ) {
+					continue;
+				}
+				self::write_all( $queue, $zip . "\t" . $path . "\n" );
+			} elseif ( is_file( $path ) ) {
+				$this->add_to_list( $list, $zip, $path );
+			}
+		}
+	}
+
+	private function add_to_list( $list, $zip, $path ) {
+		if ( ! is_readable( $path ) ) {
+			$this->warn( sprintf( __( 'Přeskočeno (nelze číst): %s', 'site-snapshot' ), $zip ) );
+			return;
+		}
+		self::write_all( $list, $zip . "\t" . $path . "\n" );
+		++$this->state['files_total'];
+		$this->state['bytes_total'] += (int) @filesize( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	}
+
+	private function commit_scan( $queue, $list ) {
+		fflush( $queue );
+		fflush( $list );
+		fseek( $queue, 0, SEEK_END );
+		$this->state['queue_size'] = (int) ftell( $queue );
+		$this->state['list_size']  = (int) ftell( $list );
 		$this->save();
 	}
 
@@ -470,12 +651,7 @@ final class Backup_Job {
 		}
 
 		Db_Dumper::prepare_session();
-		$fh = fopen( $sql_path, 'c+b' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
-		if ( ! $fh ) {
-			throw new \RuntimeException( __( 'Nelze zapisovat SQL soubor.', 'site-snapshot' ) );
-		}
-		ftruncate( $fh, $this->state['sql_size'] ); // Drop anything written after the last commit.
-		fseek( $fh, 0, SEEK_END );
+		$fh          = self::open_truncated( $sql_path, $this->state['sql_size'] ); // Drop anything written after the last commit.
 		$last_commit = microtime( true );
 
 		try {
@@ -489,15 +665,16 @@ final class Backup_Job {
 				}
 				$table = $this->state['tables'][ $index ];
 
-				if ( 0 === $this->state['table_offset'] ) {
+				if ( null === $this->state['table_cursor'] ) {
 					self::write_all( $fh, Db_Dumper::structure( $table['name'], $table['type'] ) );
 					if ( 'VIEW' === $table['type'] ) {
 						$this->next_table();
 						continue;
 					}
+					$this->state['table_cursor'] = array();
 				}
 
-				$chunk = Db_Dumper::rows( $table['name'], $this->state['table_offset'] );
+				$chunk = Db_Dumper::rows( $table['name'], $this->state['table_cursor'] );
 				if ( '' !== $chunk['error'] ) {
 					$this->warn( sprintf( __( 'Tabulka %1$s: %2$s', 'site-snapshot' ), $table['name'], $chunk['error'] ) );
 					self::write_all( $fh, "\n" );
@@ -506,11 +683,11 @@ final class Backup_Job {
 				}
 				self::write_all( $fh, $chunk['sql'] );
 				$this->state['rows_done'] += $chunk['rows'];
-				if ( $chunk['rows'] < Db_Dumper::ROWS_PER_SELECT ) {
+				if ( $chunk['done'] ) {
 					self::write_all( $fh, "\n" );
 					$this->next_table();
 				} else {
-					$this->state['table_offset'] += $chunk['rows'];
+					$this->state['table_cursor'] = $chunk['cursor'];
 				}
 				if ( microtime( true ) - $last_commit > self::COMMIT_SECONDS ) {
 					$this->commit_sql( $fh );
@@ -525,7 +702,7 @@ final class Backup_Job {
 
 	private function next_table() {
 		++$this->state['table_index'];
-		$this->state['table_offset'] = 0;
+		$this->state['table_cursor'] = null;
 	}
 
 	private function commit_sql( $fh ) {
@@ -541,20 +718,18 @@ final class Backup_Job {
 		}
 		$zip = $this->zip_writer();
 		fseek( $list, $this->state['list_offset'] );
-		$root        = File_Browser::root();
 		$last_commit = microtime( true );
 
 		try {
 			while ( microtime( true ) < $deadline ) {
 				$line = fgets( $list );
-				if ( false === $line ) {
+				if ( false === $line || $this->state['list_offset'] >= $this->state['list_size'] ) {
 					$this->state['phase'] = 'finalize';
 					break;
 				}
-				$rel  = rtrim( $line, "\n" );
-				$path = $root . '/' . $rel;
+				list( $name, $path ) = explode( "\t", rtrim( $line, "\n" ), 2 );
 				try {
-					$this->state['bytes_done'] += $zip->add_file( $path, 'files/' . $rel );
+					$this->state['bytes_done'] += $zip->add_file( $path, $name );
 				} catch ( Zip_Read_Error $e ) {
 					// File vanished or became unreadable since the scan – note it and go on.
 					$this->warn( $e->getMessage() );
@@ -566,6 +741,9 @@ final class Backup_Job {
 					$this->state['zip'] = $zip->position();
 					$this->save();
 					$last_commit = microtime( true );
+					if ( $this->cancel_requested() ) {
+						break;
+					}
 				}
 			}
 			$this->state['zip'] = $zip->position();
@@ -591,13 +769,13 @@ final class Backup_Job {
 			$info = Report::build( $this );
 			$zip->add_string( 'SITE-INFO.txt', $info['text'] );
 			$zip->add_string( 'site-info.json', $info['json'] );
-			$zip->add_string( 'OBNOVA-README.txt', Report::restore_readme( $this->state['options'] ) );
+			$zip->add_string( 'OBNOVA-README.txt', Report::restore_readme( $this->state['options'], (array) $this->state['sources'] ) );
 			$this->state['zip_size'] = $zip->finish();
 		} finally {
 			$zip->close();
 		}
 
-		foreach ( array( 'files.txt', 'database.sql', 'central.bin', 'job.lock' ) as $tmp ) {
+		foreach ( array( 'files.txt', 'queue.txt', 'database.sql', 'central.bin' ) as $tmp ) {
 			if ( file_exists( $this->dir . '/' . $tmp ) ) {
 				@unlink( $this->dir . '/' . $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 			}
@@ -605,7 +783,7 @@ final class Backup_Job {
 		$this->state['status']   = 'done';
 		$this->state['phase']    = 'done';
 		$this->state['finished'] = time();
-		delete_option( self::ACTIVE_OPTION );
+		self::release_active( $this->state['id'] );
 		Activity_Log::add(
 			'backup_completed',
 			sprintf( '%s – %s, %d souborů', $this->state['id'], size_format( $this->state['zip_size'], 1 ), $this->state['files_done'] )
@@ -620,7 +798,7 @@ final class Backup_Job {
 	private function fail( $message ) {
 		$this->state['status'] = 'failed';
 		$this->state['error']  = $message;
-		delete_option( self::ACTIVE_OPTION );
+		self::release_active( $this->state['id'] );
 		Activity_Log::add( 'backup_failed', $this->state['id'] . ' – ' . $message );
 	}
 
@@ -631,17 +809,35 @@ final class Backup_Job {
 	}
 
 	private function save() {
+		if ( ! is_dir( $this->dir ) ) {
+			throw new \RuntimeException( __( 'Pracovní složka zálohy zmizela.', 'site-snapshot' ) );
+		}
 		$this->state['updated'] = time();
 		$tmp                    = $this->dir . '/job.json.tmp';
-		if ( false === file_put_contents( $tmp, wp_json_encode( $this->state ) ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		if ( false === @file_put_contents( $tmp, wp_json_encode( $this->state ) ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 			throw new \RuntimeException( __( 'Nelze uložit stav zálohy (plný disk?).', 'site-snapshot' ) );
 		}
 		rename( $tmp, $this->dir . '/job.json' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename
 	}
 
+	/**
+	 * Opens a work file for appending after cutting it back to the committed size.
+	 *
+	 * @return resource
+	 */
+	private static function open_truncated( $path, $size ) {
+		$fh = @fopen( $path, 'c+b' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_fopen
+		if ( ! $fh ) {
+			throw new \RuntimeException( sprintf( __( 'Nelze zapisovat do %s.', 'site-snapshot' ), basename( $path ) ) );
+		}
+		ftruncate( $fh, (int) $size );
+		fseek( $fh, 0, SEEK_END );
+		return $fh;
+	}
+
 	private static function write_all( $fh, $data ) {
 		if ( '' !== $data && fwrite( $fh, $data ) !== strlen( $data ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
-			throw new \RuntimeException( __( 'Zápis SQL selhal (plný disk?).', 'site-snapshot' ) );
+			throw new \RuntimeException( __( 'Zápis selhal (plný disk?).', 'site-snapshot' ) );
 		}
 	}
 
@@ -668,6 +864,14 @@ final class Backup_Job {
 		foreach ( (array) glob( wp_normalize_path( $uploads['basedir'] ) . '/backwpup*', GLOB_ONLYDIR ) as $dir ) {
 			$dirs[] = wp_normalize_path( $dir );
 		}
-		return (array) apply_filters( 'sitesnap_excluded_dirs', $dirs );
+		$dirs = (array) apply_filters( 'sitesnap_excluded_dirs', $dirs );
+		// Scanned paths are realpath()-based – compare like with like.
+		return array_map(
+			static function ( $dir ) {
+				$real = realpath( $dir );
+				return wp_normalize_path( false !== $real ? $real : $dir );
+			},
+			$dirs
+		);
 	}
 }

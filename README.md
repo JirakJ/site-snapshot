@@ -20,13 +20,20 @@ nebo zkopírováním do `wp-content/plugins/`. Po aktivaci: **Nástroje → Site
 
 - **Po krocích.** Záloha běží v krátkých AJAX požadavcích (5–20 s, podle `max_execution_time`), takže projde
   i velký web na sdíleném hostingu. Stav se průběžně ukládá; pokud požadavek spadne (timeout), další krok
-  vrátí rozepsané soubory na poslední potvrzený stav a pokračuje. Při zavření stránky se záloha pozastaví
-  a po návratu pokračuje.
+  vrátí rozepsané soubory na poslední potvrzený stav a pokračuje. Po krocích běží i procházení souborů.
+  Při zavření stránky se záloha pozastaví: do 15 minut po návratu pokračuje sama, později je v seznamu
+  „Přerušeno“ s tlačítkem **Pokračovat**.
+- **Celá instalace, i mimo kořen:** kořen WordPressu jde do `files/`; `wp-config.php` o úroveň výš
+  a `wp-content` / pluginy / uploads přesunuté mimo ABSPATH (např. Bedrock) jdou do `extra/`.
 - **Vlastní ZIP writer** (ZIP64, UTF-8 názvy) – na rozdíl od `ZipArchive` archiv jen připisuje, takže vícegigové
   zálohy nejsou kvadraticky pomalé. Již komprimované soubory (obrázky, video, archivy) a soubory > 50 MB se
   ukládají bez komprese.
-- **Databáze bez `mysqldump`** – čisté PHP přes `$wpdb`, po 1000 řádcích: `DROP` + `CREATE` + vícerádkové `INSERT`,
-  binární data jako hex, `BIT` jako číslo, generované sloupce vynechány, pohledy bez `DEFINER`, `TIMESTAMP` v UTC.
+- **Databáze bez `mysqldump`** – čisté PHP přes `$wpdb`: `DROP` + `CREATE` + vícerádkové `INSERT`. Stránkuje se
+  podle primárního klíče (keyset), takže změny na živém webu během zálohy řádky nepřeskočí ani nezdvojí.
+  Velikost dávky se řídí průměrnou délkou řádku (~4 MB na dávku). Binární data se ukládají jako hex, `BIT` jako
+  číslo, generované sloupce se vynechávají, pohledy bez `DEFINER`, `TIMESTAMP` v UTC a `SET NAMES` podle
+  skutečného charsetu spojení. Tabulky jiné instalace se stejným začátkem prefixu (`wp_shop_` vedle `wp_`)
+  se nezahrnou. Tabulky se exportují postupně, takže to není jeden konzistentní snapshot celé DB.
 - **Úložiště záloh** je v `wp-content/uploads/site-snapshot-<24 náhodných znaků>/`, chráněné `.htaccess`,
   `web.config` a indexy. Stahuje se jen přes PHP s kontrolou oprávnění a nonce. Nedokončené zálohy maže denní cron
   po 24 h.

@@ -99,7 +99,7 @@ final class Report {
 		);
 	}
 
-	public static function restore_readme( array $options ) {
+	public static function restore_readme( array $options, array $sources = array() ) {
 		global $wpdb;
 		$lines = array(
 			'OBNOVA ZE ZÁLOHY (Site Snapshot)',
@@ -107,8 +107,17 @@ final class Report {
 			'',
 			'Obsah archivu:',
 		);
+		$extra = array();
+		foreach ( $sources as $source ) {
+			if ( 'files' !== $source['zip'] ) {
+				$extra[] = $source;
+			}
+		}
 		if ( ! empty( $options['files'] ) ) {
-			$lines[] = '  files/          – kompletní obsah webu (kořen WordPressu, včetně wp-config.php)';
+			$lines[] = '  files/          – kořen WordPressu (' . File_Browser::root() . ')';
+			foreach ( $extra as $source ) {
+				$lines[] = sprintf( '  %-15s – leží mimo kořen webu, původně %s', $source['zip'] . ( 'dir' === $source['type'] ? '/' : '' ), $source['path'] );
+			}
 		}
 		if ( ! empty( $options['db'] ) ) {
 			$lines[] = '  database.sql    – export databáze (DROP + CREATE + INSERT)';
@@ -120,6 +129,9 @@ final class Report {
 		$n       = 1;
 		if ( ! empty( $options['files'] ) ) {
 			$lines[] = ( $n++ ) . '. Nahrajte obsah složky files/ přes FTP do kořene webu (přepíše změněné soubory).';
+			if ( $extra ) {
+				$lines[] = '   Položky z extra/ vraťte na původní umístění uvedená výše.';
+			}
 		}
 		if ( ! empty( $options['db'] ) ) {
 			$lines[] = ( $n++ ) . '. Importujte database.sql do databáze z wp-config.php:';
