@@ -310,7 +310,8 @@ final class Backup_Job {
 			'status'      => $s['status'],
 			'phase'       => $s['phase'],
 			'progress'    => $this->progress(),
-			'message'     => $this->message( $table ),
+			// number_format_i18n() returns "&nbsp;" separators in some locales (cs_CZ) – the browser shows this as text.
+			'message'     => html_entity_decode( $this->message( $table ), ENT_QUOTES, 'UTF-8' ),
 			'files_done'  => $s['files_done'],
 			'files_total' => $s['files_total'],
 			'bytes_done'  => $s['bytes_done'],

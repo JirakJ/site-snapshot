@@ -8,14 +8,16 @@ i přehled verzí (PHP, databáze, WordPress, server) a přístupových údajů.
 > FTP-like file browser, an environment/credentials report and an audit log. Pure PHP, resumable, works on
 > shared hosting. The UI and docs are in Czech.
 
-![Site Snapshot – karta Záloha](docs/img/02-prubeh.jpg)
+![Site Snapshot – karta Záloha](docs/img/06-zaloha-prubeh.jpg)
 
 ## Rychlý start
 
 1. Stáhněte **`site-snapshot-X.Y.Z.zip`** z [posledního releasu](https://github.com/JirakJ/site-snapshot/releases/latest).
-2. WordPress: **Pluginy → Přidat nový → Nahrát plugin** → vybrat ZIP → **Aktivovat**.
+2. WordPress: **Pluginy → Přidat plugin → Nahrát plugin** → vybrat ZIP → **Aktivovat**.
 3. **Nástroje → Site Snapshot → Vytvořit zálohu** → **Stáhnout ZIP** → zálohu ze serveru **Smazat**.
 4. Běží web na **nginx**? Doplňte pravidlo, které plugin zobrazí (viz návod, kapitola 4).
+
+🖱️ **[Ovládání krok za krokem](docs/OVLADANI.md)** – obrázkový průvodce přímo z administrace WordPressu.
 
 📖 **[Kompletní návod](docs/NAVOD.md)** – instalace, zabezpečení (Apache / nginx), FTP přístupy, záloha,
 obnova webu ze zálohy, velké weby, řešení problémů.

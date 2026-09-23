@@ -15,7 +15,7 @@ final class System_Info {
 	 * @return array<string, array{title: string, rows: array<string, string>}>
 	 */
 	public static function collect() {
-		return array(
+		$sections = array(
 			'wordpress' => array(
 				'title' => __( 'WordPress', 'site-snapshot' ),
 				'rows'  => self::wordpress(),
@@ -33,6 +33,13 @@ final class System_Info {
 				'rows'  => self::server(),
 			),
 		);
+		// Plain text for SITE-INFO.txt / JSON: size_format() may return "&nbsp;" separators (cs_CZ).
+		foreach ( $sections as $key => $section ) {
+			foreach ( $section['rows'] as $label => $value ) {
+				$sections[ $key ]['rows'][ $label ] = html_entity_decode( (string) $value, ENT_QUOTES, 'UTF-8' );
+			}
+		}
+		return $sections;
 	}
 
 	private static function wordpress() {

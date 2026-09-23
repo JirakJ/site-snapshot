@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 – 2026-09-23
+
+- **Oprava (česká lokalizace WordPressu):** průběh zálohy zobrazoval oddělovač tisíců doslova jako
+  `2&nbsp;380` – `number_format_i18n()` / `size_format()` v `cs_CZ` vrací HTML entitu. Dekóduje se v průběhu
+  zálohy, v historii i v `SITE-INFO.txt` / `site-info.json`.
+- **Dokumentace:** nový obrázkový průvodce [`docs/OVLADANI.md`](docs/OVLADANI.md) – 17 snímků přímo z české
+  administrace WordPressu s očíslovanými kroky (instalace, menu, záloha, průběh, stažení, přerušená záloha,
+  prohlížeč souborů, přístupy, historie, upozornění na nechráněné zálohy, odinstalace). Snímky v návodu
+  nahrazeny českými; názvy menu sjednoceny s WordPress 7 („Přidat plugin“).
+
 ## 0.2.0 – 2026-09-23
 
 - **Samotest ochrany úložiště:** karta Záloha si přes HTTP (jako nepřihlášený návštěvník) zkusí stáhnout
