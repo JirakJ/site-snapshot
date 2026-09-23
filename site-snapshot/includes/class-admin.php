@@ -167,6 +167,14 @@ final class Admin {
 			<p><strong><?php esc_html_e( 'Záloha obsahuje citlivé údaje', 'site-snapshot' ); ?></strong> – <?php esc_html_e( 'wp-config.php, hesla k databázi a zadané FTP/hostingové přístupy. Uchovávejte ji v bezpečí a po stažení ji ze serveru smažte.', 'site-snapshot' ); ?></p>
 		</div>
 
+		<?php if ( self::is_nginx() ) : ?>
+			<div class="notice notice-error inline sitesnap-nginx">
+				<p><strong><?php esc_html_e( 'Server běží na nginx – ten ignoruje ochranný soubor .htaccess.', 'site-snapshot' ); ?></strong>
+				<?php esc_html_e( 'Zálohy chrání jen náhodný název složky. Požádejte hosting (nebo doplňte sami) o toto pravidlo do konfigurace webu a nginx znovu načtěte:', 'site-snapshot' ); ?></p>
+				<pre><code><?php echo esc_html( self::nginx_rule() ); ?></code></pre>
+			</div>
+		<?php endif; ?>
+
 		<h2><?php esc_html_e( 'Zálohy na serveru', 'site-snapshot' ); ?></h2>
 		<table class="widefat striped sitesnap-table">
 			<thead>
@@ -236,6 +244,31 @@ final class Admin {
 			</tbody>
 		</table>
 		<?php
+	}
+
+	private static function is_nginx() {
+		$software = isset( $_SERVER['SERVER_SOFTWARE'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_SOFTWARE'] ) ) : '';
+		return false !== stripos( $software, 'nginx' );
+	}
+
+	/**
+	 * nginx rule denying the backup storage under this site's uploads URL path.
+	 *
+	 * A "^~" prefix location wins over every regex location regardless of
+	 * order – a plain regex rule would lose to an earlier static-files block
+	 * such as `location ~* \.(zip|txt)$`. Multisite needs a regex for all
+	 * subsites, so there the rule must be placed before other regex blocks.
+	 */
+	public static function nginx_rule() {
+		$uploads = wp_upload_dir( null, false );
+		$path    = untrailingslashit( (string) wp_parse_url( $uploads['baseurl'], PHP_URL_PATH ) );
+		if ( ! is_multisite() ) {
+			return 'location ^~ ' . $path . "/site-snapshot- {\n    deny all;\n    return 404;\n}";
+		}
+		$base = preg_replace( '#/sites/\d+$#', '', $path );
+		$base = str_replace( '\\-', '-', preg_quote( $base, '#' ) ); // "-" is literal outside [] – keep the rule readable.
+		return "# Vložte PŘED ostatní bloky \"location ~\" (regexy se vyhodnocují v pořadí).\n"
+			. 'location ~ ^' . $base . "/(sites/[0-9]+/)?site-snapshot- {\n    deny all;\n    return 404;\n}";
 	}
 
 	private function status_label( Backup_Job $job ) {

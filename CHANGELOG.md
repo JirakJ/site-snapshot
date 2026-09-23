@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 – 2026-09-23
+
+- **nginx:** na serveru s nginx zobrazí karta Záloha upozornění s pravidlem `location ^~ <uploads>/site-snapshot-`
+  (na multisite regex pro všechny podweby). Ověřeno na nginx 1.31: archiv, výpis složky i `.htaccess` → 404,
+  i s `%2D`, `//`, `/./`, `/../` v adrese a i když je před pravidlem regex blok pro statické soubory.
+  Ochrana `.htaccess` ověřena na Apache 2.4 (403).
+- **Dokumentace:** kompletní návod [`docs/NAVOD.md`](docs/NAVOD.md) se screenshoty – instalace, zabezpečení,
+  FTP přístupy, záloha, obnova, velké weby, řešení problémů, odinstalace.
+- Licence GPL-2.0 (`LICENSE`), repozitář je veřejný.
+- Z repozitáře odstraněna omylem commitnutá lokální metadata nástrojů (`.claude/`).
+
 ## 0.1.0 – 2026-09-23
 
 První verze.
