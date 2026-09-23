@@ -1,11 +1,24 @@
-# Site Snapshot (pracovní název)
+# Site Snapshot
 
 WordPress plugin pro rychlou zálohu webu před úpravami: prohlížeč souborů webu (jako FTP klient), stažení
 libovolného souboru nebo složky a **kompletní záloha souborů + databáze do jednoho ZIPu**. Každá záloha obsahuje
 i přehled verzí (PHP, databáze, WordPress, server) a přístupových údajů.
 
-Plugin je v `site-snapshot/` – do WordPressu se nahraje jako ZIP této složky (Pluginy → Přidat nový → Nahrát)
-nebo zkopírováním do `wp-content/plugins/`. Po aktivaci: **Nástroje → Site Snapshot**.
+> *English:* one-click full-site backup (files + database) into a single ZIP from wp-admin, a read-only
+> FTP-like file browser, an environment/credentials report and an audit log. Pure PHP, resumable, works on
+> shared hosting. The UI and docs are in Czech.
+
+![Site Snapshot – karta Záloha](docs/img/02-prubeh.jpg)
+
+## Rychlý start
+
+1. Stáhněte **`site-snapshot-X.Y.Z.zip`** z [posledního releasu](https://github.com/JirakJ/site-snapshot/releases/latest).
+2. WordPress: **Pluginy → Přidat nový → Nahrát plugin** → vybrat ZIP → **Aktivovat**.
+3. **Nástroje → Site Snapshot → Vytvořit zálohu** → **Stáhnout ZIP** → zálohu ze serveru **Smazat**.
+4. Běží web na **nginx**? Doplňte pravidlo, které plugin zobrazí (viz návod, kapitola 4).
+
+📖 **[Kompletní návod](docs/NAVOD.md)** – instalace, zabezpečení (Apache / nginx), FTP přístupy, záloha,
+obnova webu ze zálohy, velké weby, řešení problémů.
 
 ## Co umí
 
@@ -45,8 +58,15 @@ nebo zkopírováním do `wp-content/plugins/`. Po aktivaci: **Nástroje → Site
   úložiště záloh nezobrazuje ani nestahuje.
 - Ručně zadané FTP/hosting údaje jsou šifrované (libsodium, klíč odvozený z `AUTH_KEY`/`AUTH_SALT`) – únik samotné
   databáze je neprozradí. Po změně salts je potřeba je zadat znovu.
-- **Záloha obsahuje hesla** (`wp-config.php`, `SITE-INFO.txt`). Po stažení ji ze serveru smažte – na nginx
-  `.htaccess` neplatí a ochranou je jen náhodný název složky.
+- Úložiště záloh chrání na Apache/LiteSpeed `.htaccess` (ověřeno: 403) a na IIS `web.config`. Plugin navíc
+  **sám otestuje**, jestli jde kontrolní soubor ze složky záloh stáhnout bez přihlášení (funguje pro jakýkoli
+  server, i nginx před Apachem). Pokud ano, zobrazí pravidlo pro nginx (`location ^~ …`, na multisite regex podle
+  názvu složky) – ověřeno na nginx 1.31 včetně kódovaných adres, regex bloků pro statické soubory
+  a přepisů multisite.
+- **Záloha obsahuje hesla** (`wp-config.php`, `SITE-INFO.txt`) – po stažení ji ze serveru smažte.
+
+Bezpečnostní problém nahlaste soukromě přes
+[GitHub Security Advisories](https://github.com/JirakJ/site-snapshot/security/advisories/new), ne veřejným issue.
 
 ## Omezení
 
@@ -63,4 +83,10 @@ Filtry: `sitesnap_root` (kořen prohlížeče a zálohy), `sitesnap_excluded_dir
 Požadavky: WordPress 5.6+, PHP 7.4+ (64bit), rozšíření `zlib` (komprese; bez něj se ukládá nekomprimovaně)
 a `sodium` (součást PHP 7.2+, jinak WordPress polyfill).
 
-Otestováno na WordPress 7.1.2, PHP 8.5, MariaDB 13 – viz CHANGELOG.
+Build: `bin/build.sh` → `dist/site-snapshot-<verze>.zip`.
+
+Otestováno na WordPress 7.1.2, PHP 8.5, MariaDB 13, Apache 2.4 a nginx 1.31 – viz [CHANGELOG](CHANGELOG.md).
+
+## Licence
+
+[GPL-2.0-or-later](LICENSE) – stejně jako WordPress.

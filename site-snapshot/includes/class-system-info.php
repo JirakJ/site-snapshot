@@ -67,11 +67,11 @@ final class System_Info {
 
 	private static function php() {
 		$extensions = array();
-		foreach ( array( 'zip', 'mysqli', 'curl', 'openssl', 'mbstring', 'intl', 'gd', 'imagick', 'sodium', 'exif', 'fileinfo', 'opcache' ) as $ext ) {
+		foreach ( array( 'zlib', 'sodium', 'mysqli', 'zip', 'curl', 'openssl', 'mbstring', 'intl', 'gd', 'imagick', 'exif', 'fileinfo', 'opcache' ) as $ext ) {
 			$extensions[] = $ext . ( extension_loaded( $ext ) || extension_loaded( 'Zend ' . ucfirst( $ext ) ) ? ' ✓' : ' ✗' );
 		}
 		return array(
-			__( 'Verze', 'site-snapshot' )     => PHP_VERSION,
+			__( 'Verze', 'site-snapshot' )     => PHP_VERSION . ' (' . ( 8 === PHP_INT_SIZE ? '64bit' : '32bit – ' . __( 'nepodporováno', 'site-snapshot' ) ) . ')',
 			'SAPI'                             => PHP_SAPI,
 			'memory_limit'                     => (string) ini_get( 'memory_limit' ),
 			'max_execution_time'               => (string) ini_get( 'max_execution_time' ),
