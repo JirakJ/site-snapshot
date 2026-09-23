@@ -67,7 +67,7 @@ funguje i na levném sdíleném hostingu.
 4. Plugin najdete v menu **Nástroje → Site Snapshot**.
 
 > Pokud nahrání selže (hosting zakazuje instalaci pluginů z administrace, nebo je `upload_max_filesize` menší než
-> ZIP pluginu – ten má cca 120 kB), použijte variantu B.
+> ZIP pluginu – ten má cca 50 kB), použijte variantu B.
 
 ### B) Přes FTP
 
