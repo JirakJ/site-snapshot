@@ -8,7 +8,7 @@ i přehled verzí (PHP, databáze, WordPress, server) a přístupových údajů.
 > FTP-like file browser, an environment/credentials report and an audit log. Pure PHP, resumable, works on
 > shared hosting. The UI and docs are in Czech.
 
-![Site Snapshot – karta Záloha](docs/img/06-zaloha-prubeh.jpg)
+![Site Snapshot – karta Záloha](docs/img/navod-prubeh.jpg)
 
 ## Rychlý start
 
@@ -50,8 +50,8 @@ obnova webu ze zálohy, velké weby, řešení problémů.
   skutečného charsetu spojení. Tabulky jiné instalace se stejným začátkem prefixu (`wp_shop_` vedle `wp_`)
   se nezahrnou. Tabulky se exportují postupně, takže to není jeden konzistentní snapshot celé DB.
 - **Úložiště záloh** je v `wp-content/uploads/site-snapshot-<24 náhodných znaků>/`, chráněné `.htaccess`,
-  `web.config` a indexy. Stahuje se jen přes PHP s kontrolou oprávnění a nonce. Nedokončené zálohy maže denní cron
-  po 24 h.
+  `web.config` a indexy. Stahuje se jen přes PHP s kontrolou oprávnění a nonce. Nedokončené zálohy maže denní WP-Cron úklid
+  nejdřív po 24 h (obvykle do 48 h).
 
 ## Bezpečnost
 

@@ -3,12 +3,14 @@
 ## 0.2.1 – 2026-09-23
 
 - **Oprava (česká lokalizace WordPressu):** průběh zálohy zobrazoval oddělovač tisíců doslova jako
-  `2&nbsp;380` – `number_format_i18n()` / `size_format()` v `cs_CZ` vrací HTML entitu. Dekóduje se v průběhu
-  zálohy, v historii i v `SITE-INFO.txt` / `site-info.json`.
+  `2&nbsp;380` – `number_format_i18n()` / `size_format()` v `cs_CZ` vrací HTML entitu. Nový pomocník
+  `Format::number()` / `Format::size()` dekóduje jen formátované číslo (ne uživatelská data) a používá se
+  všude, kde výstup nejde do HTML: průběh zálohy, historie, `SITE-INFO.txt` / `site-info.json`.
 - **Dokumentace:** nový obrázkový průvodce [`docs/OVLADANI.md`](docs/OVLADANI.md) – 17 snímků přímo z české
-  administrace WordPressu s očíslovanými kroky (instalace, menu, záloha, průběh, stažení, přerušená záloha,
-  prohlížeč souborů, přístupy, historie, upozornění na nechráněné zálohy, odinstalace). Snímky v návodu
-  nahrazeny českými; názvy menu sjednoceny s WordPress 7 („Přidat plugin“).
+  administrace WordPressu 7.1 s pluginem 0.2.1, každý s vlastními očíslovanými kroky (instalace, menu, záloha,
+  průběh, stažení, přerušená záloha, prohlížeč souborů, přístupy, historie, upozornění na nechráněné zálohy,
+  odinstalace). Kompletní návod má vlastní čisté snímky bez značek; názvy menu podle WordPress 7
+  („Přidat plugin“); upřesněna lhůta úklidu přerušených záloh (WP-Cron, 24–48 h).
 
 ## 0.2.0 – 2026-09-23
 
