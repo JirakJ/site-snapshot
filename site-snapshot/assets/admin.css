@@ -1,0 +1,179 @@
+.sitesnap .sitesnap-version {
+	font-size: 12px;
+	font-weight: 400;
+	color: #646970;
+	vertical-align: middle;
+}
+
+.sitesnap-body {
+	margin-top: 16px;
+}
+
+.sitesnap-card {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 4px 20px 16px;
+	margin-bottom: 20px;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.sitesnap-card h2 {
+	font-size: 15px;
+	margin: 16px 0 10px;
+}
+
+.sitesnap-h {
+	margin-top: 28px;
+}
+
+.sitesnap-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+	gap: 0 20px;
+}
+
+@media (max-width: 782px) {
+	.sitesnap-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.sitesnap-options label {
+	display: block;
+	margin: 8px 0;
+}
+
+.sitesnap-options label.sitesnap-sub {
+	margin-left: 24px;
+}
+
+.sitesnap-options code {
+	font-size: 12px;
+	word-break: break-all;
+}
+
+.sitesnap-progress {
+	margin-top: 12px;
+}
+
+.sitesnap-bar {
+	height: 14px;
+	background: #f0f0f1;
+	border-radius: 7px;
+	overflow: hidden;
+}
+
+.sitesnap-bar span {
+	display: block;
+	height: 100%;
+	background: #2271b1;
+	transition: width 0.4s ease;
+}
+
+.sitesnap-progress.is-failed .sitesnap-bar span {
+	background: #d63638;
+}
+
+.sitesnap-progress.is-failed .sitesnap-status,
+.sitesnap-error {
+	color: #d63638;
+}
+
+.sitesnap-table .sitesnap-actions {
+	text-align: right;
+	white-space: nowrap;
+}
+
+.sitesnap-table .sitesnap-actions .button {
+	margin-left: 4px;
+}
+
+.sitesnap-table .num {
+	text-align: right;
+	white-space: nowrap;
+}
+
+.sitesnap-warnings summary {
+	cursor: pointer;
+	color: #996800;
+}
+
+.sitesnap-warnings ul {
+	margin: 4px 0 0 16px;
+	list-style: disc;
+	font-size: 12px;
+	max-height: 200px;
+	overflow: auto;
+}
+
+.sitesnap-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+}
+
+.sitesnap-breadcrumbs {
+	font-size: 14px;
+}
+
+.sitesnap-breadcrumbs .sep {
+	color: #8c8f94;
+	margin: 0 4px;
+}
+
+.sitesnap-files .sitesnap-name {
+	word-break: break-all;
+}
+
+.sitesnap-files .dashicons {
+	color: #8c8f94;
+	margin-right: 4px;
+}
+
+.sitesnap-files .dashicons-category {
+	color: #dba617;
+}
+
+.sitesnap-unreadable {
+	opacity: 0.6;
+}
+
+.sitesnap-badge {
+	display: inline-block;
+	font-size: 11px;
+	line-height: 1.6;
+	padding: 0 6px;
+	border-radius: 3px;
+	background: #f0f0f1;
+	color: #50575e;
+	margin-left: 6px;
+}
+
+.sitesnap-badge-warn {
+	background: #fcf0f1;
+	color: #b32d2e;
+}
+
+.sitesnap-kv th {
+	width: 38%;
+	font-weight: 600;
+}
+
+.sitesnap-kv td,
+.sitesnap-kv th {
+	word-break: break-word;
+}
+
+.sitesnap-secret-input {
+	display: inline-flex;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+
+.sitesnap-clear-log {
+	margin-top: 12px;
+}
